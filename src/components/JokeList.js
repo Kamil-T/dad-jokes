@@ -1,5 +1,6 @@
 import React, { Component } from 'react'
 import Axios from 'axios'
+import uuid from 'uuid/v4'
 import './JokeList.css'
 import Joke from './Joke'
 
@@ -11,8 +12,10 @@ class JokeList extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      jokes: JSON.parse(window.localStorage.getItem('jokes')) || []
+      jokes: JSON.parse(window.localStorage.getItem('jokes')) || [],
+      loading: false
     }
+    this.seenJokes = new Set(this.state.jokes.map(j => j.id))
     this.handleClick = this.handleClick.bind(this)
   }
 
@@ -21,17 +24,33 @@ class JokeList extends Component {
   }
 
   async getJokes() {
-    let jokes = []
-    while (jokes.length < this.props.numJokesToGet) {
-      let res = await Axios.get('https://icanhazdadjoke.com/', {
-        headers: { Accept: 'application/json' }
-      })
-      jokes.push({ id: res.data.id, text: res.data.joke, votes: 0 })
+    try {
+      let jokes = []
+      while (jokes.length < this.props.numJokesToGet) {
+        let res = await Axios.get('https://icanhazdadjoke.com/', {
+          headers: { Accept: 'application/json' }
+        })
+        if (!this.seenJokes.has(res.data.id)) {
+          jokes.push({
+            id: res.data.id,
+            text: res.data.joke,
+            key: uuid(),
+            votes: 0
+          })
+        }
+      }
+      this.setState(
+        st => ({
+          loading: false,
+          jokes: [...st.jokes, ...jokes]
+        }),
+        () =>
+          window.localStorage.setItem('jokes', JSON.stringify(this.state.jokes))
+      )
+    } catch (e) {
+      alert(e)
+      this.setState({ loading: false })
     }
-    this.setState(st => ({
-      jokes: [...st.jokes, ...jokes]
-    }))
-    window.localStorage.setItem('jokes', JSON.stringify(jokes))
   }
 
   handleVote(id, change) {
@@ -47,10 +66,21 @@ class JokeList extends Component {
   }
 
   handleClick() {
-    this.getJokes()
+    this.setState({ loading: true }, this.getJokes)
   }
 
   render() {
+    if (this.state.loading) {
+      return (
+        <div className='JokeList-spinner'>
+          <i className='far fa-8x fa-laugh fa-spin' />
+          <h1 className='JokeList-title'>Loading...</h1>
+        </div>
+      )
+    }
+
+    let jokes = this.state.jokes.sort((a, b) => b.votes - a.votes)
+
     return (
       <div className='JokeList'>
         <div className='JokeList-sidebar'>
@@ -64,16 +94,15 @@ class JokeList extends Component {
           </button>
         </div>
         <div className='JokeList-jokes'>
-          {this.state.jokes.map(j => (
-            <div>
-              <Joke
-                key={j.id}
-                votes={j.votes}
-                text={j.text}
-                upvote={() => this.handleVote(j.id, 1)}
-                downvote={() => this.handleVote(j.id, -1)}
-              />
-            </div>
+          {jokes.map(j => (
+            <Joke
+              id={j.id}
+              key={j.key}
+              votes={j.votes}
+              text={j.text}
+              upvote={() => this.handleVote(j.id, 1)}
+              downvote={() => this.handleVote(j.id, -1)}
+            />
           ))}
         </div>
       </div>
